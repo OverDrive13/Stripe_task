@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% load static %}
+{% block content %}
+  <div class="container text-center my-5">
+    <div class="row">
+      <div class="col-lg-6 col-md-8 mx-auto">
+        <div class="card">
+          <div class="card-body">
+            <h2 class="card-title">{{ order }}</h2>
+            {% for item in items %}
+              <li class="card-text">
+                {{ item.name }}
+                {{ item.price }}
+                {{ item.currency }}</li>
+            {% endfor %}
+            <form id="payment-form">
+              <div id="payment-element">
+                <!--Stripe.js injects the Payment Element-->
+              </div>
+              <button id="submit">
+                <div class="spinner hidden" id="spinner"></div>
+                <span id="button-text">Оплатить заказ</span>
+              </button>
+              <div id="payment-message" class="hidden"></div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% csrf_token %}
+<script type="text/javascript">
+const csrftoken = "{{ csrf_token }}";
+const stripe = Stripe("{{ stripe_pub_key }}");
+const items = [{
+    {% for item in items %}        
+      id:"{{ item.name }}",
+    {% endfor %}
+    }];   
+let elements;
+initialize();
+checkStatus();
+document
+  .querySelector("#payment-form")
+  .addEventListener("submit", handleSubmit);
+async function initialize() {
+  const response = await fetch("{% url "create-payment-intent" order.pk %}", {
+    method: "POST",
+    headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": csrftoken
+    },
+
+    body: JSON.stringify({ items }),
+  });
+  const { clientSecret } = await response.json();
+  const appearance = {
+    theme: "stripe",
+  };
+  elements = stripe.elements({ appearance, clientSecret });
+  const paymentElementOptions = {
+    layout: "tabs",
+  };
+  const paymentElement = elements.create("payment", paymentElementOptions);
+  paymentElement.mount("#payment-element");
+}
+async function handleSubmit(e) {
+  e.preventDefault();
+  setLoading(true);
+  const { error } = await stripe.confirmPayment({
+    elements,
+    confirmParams: {
+      // Make sure to change this to your payment completion page
+      return_url: "{{ domain_url }}" + "success/",
+    },
+  });
+  if (error.type === "card_error" || error.type === "validation_error") {
+    showMessage(error.message);
+  } 
+  setLoading(false);
+}
+async function checkStatus() {
+  const clientSecret = new URLSearchParams(window.location.search).get(
+    "payment_intent_client_secret"
+  );
+
+  if (!clientSecret) {
+    return;
+  }
+
+  const { paymentIntent } = await stripe.retrievePaymentIntent(clientSecret);
+
+  switch (paymentIntent.status) {
+    case "succeeded":
+      showMessage("ПЛатеж выполнен успешно!");
+      break;
+    case "processing":
+      showMessage("Ваш платеж обрабатывается.");
+      break;
+    case "requires_payment_method":
+      showMessage("Ваш платеж не удался.");
+      break;
+    default:
+      showMessage("Что-то пошла не так.");
+      break;
+  }
+}
+
+// ------- UI helpers -------
+
+function showMessage(messageText) {
+  const messageContainer = document.querySelector("#payment-message");
+
+  messageContainer.classList.remove("hidden");
+  messageContainer.textContent = messageText;
+
+  setTimeout(function () {
+    messageContainer.classList.add("hidden");
+    messageText.textContent = "";
+  }, 4000);
+}
+
+// Show a spinner on payment submission
+function setLoading(isLoading) {
+  if (isLoading) {
+    // Disable the button and show a spinner
+    document.querySelector("#submit").disabled = true;
+    document.querySelector("#spinner").classList.remove("hidden");
+    document.querySelector("#button-text").classList.add("hidden");
+  } else {
+    document.querySelector("#submit").disabled = false;
+    document.querySelector("#spinner").classList.add("hidden");
+    document.querySelector("#button-text").classList.remove("hidden");
+  }
+}
+  </script>
+{% endblock content %}
