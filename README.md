@@ -22,7 +22,7 @@ STRIPE_SECRET_KEY= После регистрации ключи будут на 
 ### База Данных
 В репозитории уже есть db.sqlite3
 
-``cd stripe_django/``
+``cd stripe``
 ``python manage.py runserver``
 ```
 
